@@ -1,7 +1,11 @@
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
-import { Camera, Keyboard, ScanLine, Square, UserCheck } from 'lucide-react'
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+  type CameraDevice,
+} from 'html5-qrcode'
+import { Camera, ImageUp, Keyboard, RefreshCw, ScanLine, Square, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Badge, Button, Field, Panel, SelectField } from '../components/ui'
 import {
@@ -31,7 +35,12 @@ export function ScannerPage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [message, setMessage] = useState<ScanMessage>(null)
   const [manualEnrollment, setManualEnrollment] = useState('')
+  const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([])
+  const [selectedCameraId, setSelectedCameraId] = useState('')
+  const [lastRawScan, setLastRawScan] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [isDetectingCameras, setIsDetectingCameras] = useState(false)
+  const [isScanningFile, setIsScanningFile] = useState(false)
   const [isScannerRunning, setIsScannerRunning] = useState(false)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const processingRef = useRef(false)
@@ -150,6 +159,7 @@ export function ScannerPage() {
 
       processingRef.current = true
       lastScanRef.current = { value: decodedText, scannedAt: now }
+      setLastRawScan(decodedText)
 
       void markScannedEnrollment(decodedText).finally(() => {
         window.setTimeout(() => {
@@ -160,17 +170,68 @@ export function ScannerPage() {
     [markScannedEnrollment],
   )
 
+  async function detectCameras() {
+    setIsDetectingCameras(true)
+
+    try {
+      const cameras = await Html5Qrcode.getCameras()
+      setCameraDevices(cameras)
+
+      if (!selectedCameraId) {
+        const preferred =
+          cameras.find((camera) => /back|rear|environment/i.test(camera.label)) ??
+          cameras[0]
+        setSelectedCameraId(preferred?.id ?? '')
+      }
+
+      setMessage({
+        tone: cameras.length > 0 ? 'success' : 'warning',
+        title: cameras.length > 0 ? 'Cameras detected' : 'No camera found',
+        detail:
+          cameras.length > 0
+            ? `${cameras.length} camera${cameras.length === 1 ? '' : 's'} available.`
+            : 'Connect a camera or use image upload fallback.',
+      })
+    } catch (caught) {
+      setMessage({
+        tone: 'danger',
+        title: 'Camera detection failed',
+        detail:
+          caught instanceof Error
+            ? caught.message
+            : 'Browser did not return camera devices.',
+      })
+    } finally {
+      setIsDetectingCameras(false)
+    }
+  }
+
   async function startScanner() {
     if (scannerRef.current || isScannerRunning) return
 
+    let scanner: Html5Qrcode | null = null
+
     try {
-      const scanner = new Html5Qrcode(scannerElementId, {
+      scanner = new Html5Qrcode(scannerElementId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         verbose: false,
       })
+      const cameras =
+        cameraDevices.length > 0
+          ? cameraDevices
+          : await Html5Qrcode.getCameras().catch(() => [])
+      const preferredCamera =
+        cameras.find((camera) => camera.id === selectedCameraId) ??
+        cameras.find((camera) => /back|rear|environment/i.test(camera.label)) ??
+        cameras[0]
+
+      if (cameras.length > 0) {
+        setCameraDevices(cameras)
+        setSelectedCameraId(preferredCamera?.id ?? '')
+      }
 
       await scanner.start(
-        { facingMode: 'environment' },
+        preferredCamera?.id ?? { facingMode: 'environment' },
         {
           fps: 10,
           qrbox: (viewfinderWidth, viewfinderHeight) => {
@@ -183,8 +244,13 @@ export function ScannerPage() {
       )
       scannerRef.current = scanner
       setIsScannerRunning(true)
+      setMessage({
+        tone: 'success',
+        title: 'Scanner running',
+        detail: preferredCamera?.label || 'Camera preview is active.',
+      })
     } catch (caught) {
-      scannerRef.current?.clear()
+      scanner?.clear()
       scannerRef.current = null
       setIsScannerRunning(false)
       setMessage({
@@ -205,6 +271,44 @@ export function ScannerPage() {
     scanner.clear()
     scannerRef.current = null
     setIsScannerRunning(false)
+  }
+
+  async function handleFileScan(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setIsScanningFile(true)
+
+    try {
+      if (scannerRef.current) {
+        await stopScanner()
+      }
+
+      const scanner = new Html5Qrcode(scannerElementId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      })
+      scannerRef.current = scanner
+      const decodedText = await scanner.scanFile(file, true)
+      setLastRawScan(decodedText)
+      await markScannedEnrollment(decodedText)
+      scanner.clear()
+      scannerRef.current = null
+    } catch (caught) {
+      scannerRef.current?.clear()
+      scannerRef.current = null
+      setMessage({
+        tone: 'danger',
+        title: 'Image scan failed',
+        detail:
+          caught instanceof Error
+            ? caught.message
+            : 'The uploaded image did not contain a readable QR code.',
+      })
+    } finally {
+      setIsScanningFile(false)
+    }
   }
 
   async function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
@@ -256,6 +360,14 @@ export function ScannerPage() {
               </SelectField>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Button
+                disabled={isScannerRunning || isDetectingCameras}
+                onClick={() => void detectCameras()}
+                variant="secondary"
+              >
+                <RefreshCw size={18} aria-hidden="true" />
+                {isDetectingCameras ? 'Detecting' : 'Detect Cameras'}
+              </Button>
               <Button disabled={!selectedSession || isScannerRunning} onClick={() => void startScanner()}>
                 <Camera size={20} aria-hidden="true" />
                 Start Scanner
@@ -266,6 +378,24 @@ export function ScannerPage() {
               </Button>
             </div>
           </div>
+
+          {cameraDevices.length > 0 ? (
+            <div className="mt-5 max-w-xl">
+              <SelectField
+                disabled={isScannerRunning}
+                label="Camera device"
+                name="camera"
+                onChange={(event) => setSelectedCameraId(event.target.value)}
+                value={selectedCameraId}
+              >
+                {cameraDevices.map((camera, index) => (
+                  <option key={camera.id} value={camera.id}>
+                    {camera.label || `Camera ${index + 1}`}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+          ) : null}
 
           {activeSessions.length === 0 && !isLoading ? (
             <div className="mt-6 border-3 border-danger bg-paper p-4 font-mono font-bold uppercase text-danger">
@@ -278,7 +408,7 @@ export function ScannerPage() {
               className="min-h-[320px] bg-ink"
               id={scannerElementId}
             />
-            {!isScannerRunning ? (
+            {!isScannerRunning && !isScanningFile ? (
               <div className="pointer-events-none absolute inset-3 grid place-items-center bg-surface text-center font-mono font-bold uppercase text-muted">
                 <div className="grid gap-3 p-6">
                   <ScanLine className="mx-auto text-accent" size={64} aria-hidden="true" />
@@ -302,6 +432,18 @@ export function ScannerPage() {
               Save Enrollment
             </Button>
           </form>
+
+          <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-center gap-2 border-3 border-ink bg-surface px-5 py-3 font-mono font-bold uppercase text-ink shadow-brutal-sm">
+            <ImageUp size={20} aria-hidden="true" />
+            {isScanningFile ? 'Scanning Image' : 'Scan QR Image'}
+            <input
+              accept="image/*"
+              className="sr-only"
+              disabled={isScanningFile}
+              onChange={(event) => void handleFileScan(event)}
+              type="file"
+            />
+          </label>
         </Panel>
 
         <Panel className="p-5">
@@ -321,6 +463,13 @@ export function ScannerPage() {
             <div className="mt-5 border-3 border-ink bg-paper p-4">
               <Badge tone={resultTone}>{message.title}</Badge>
               <p className="mt-3 font-mono text-sm font-bold uppercase">{message.detail}</p>
+            </div>
+          ) : null}
+
+          {lastRawScan ? (
+            <div className="mt-5 border-3 border-ink bg-surface p-4">
+              <p className="font-mono text-xs font-bold uppercase text-muted">Last raw QR</p>
+              <p className="mt-2 break-all font-mono text-sm">{lastRawScan}</p>
             </div>
           ) : null}
 
