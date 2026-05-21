@@ -169,7 +169,6 @@ export function ScannerPage() {
         verbose: false,
       })
 
-      scannerRef.current = scanner
       await scanner.start(
         { facingMode: 'environment' },
         {
@@ -182,8 +181,10 @@ export function ScannerPage() {
         handleDecodedQr,
         () => undefined,
       )
+      scannerRef.current = scanner
       setIsScannerRunning(true)
     } catch (caught) {
+      scannerRef.current?.clear()
       scannerRef.current = null
       setIsScannerRunning(false)
       setMessage({
@@ -272,18 +273,19 @@ export function ScannerPage() {
             </div>
           ) : null}
 
-          <div className="mt-6 border-6 border-accent bg-ink p-3 shadow-brutal">
+          <div className="relative mt-6 overflow-hidden border-6 border-accent bg-ink p-3 shadow-brutal">
             <div
-              className="grid min-h-[320px] place-items-center bg-surface text-center font-mono font-bold uppercase text-muted"
+              className="min-h-[320px] bg-ink"
               id={scannerElementId}
-            >
-              {!isScannerRunning ? (
+            />
+            {!isScannerRunning ? (
+              <div className="pointer-events-none absolute inset-3 grid place-items-center bg-surface text-center font-mono font-bold uppercase text-muted">
                 <div className="grid gap-3 p-6">
                   <ScanLine className="mx-auto text-accent" size={64} aria-hidden="true" />
                   <span>Scanner idle</span>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
 
           <form className="mt-6 grid gap-4 bg-ink p-5 text-paper" onSubmit={handleManualSubmit}>

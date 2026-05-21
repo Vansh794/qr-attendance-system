@@ -73,6 +73,18 @@ a {
   outline-offset: 3px;
 }
 
+#student-id-card-qr-scanner,
+#student-id-card-qr-scanner > div,
+#student-id-card-qr-scanner video {
+  min-height: 320px;
+  width: 100% !important;
+}
+
+#student-id-card-qr-scanner video {
+  display: block;
+  object-fit: cover;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
