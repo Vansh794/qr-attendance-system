@@ -3,21 +3,22 @@ import {
   Html5QrcodeSupportedFormats,
   type CameraDevice,
 } from 'html5-qrcode'
-import { Camera, ImageUp, Keyboard, RefreshCw, ScanLine, Square, UserCheck } from 'lucide-react'
+import { Camera, ImageUp, Keyboard, ScanLine, Square, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Badge, Button, Field, Panel, SelectField } from '../components/ui'
 import {
   getAttendanceForSession,
   markAttendanceByEnrollment,
 } from '../services/attendanceService'
-import { recordQrScanLog } from '../services/scanLogService'
+import { recordQrScanLog, updateQrScanLog } from '../services/scanLogService'
 import { listActiveSessions } from '../services/sessionService'
 import { parseEnrollmentFromQr } from '../lib/studentQr'
 import type {
   AttendanceRecord,
   AttendanceResult,
+  QrScanLog,
   QrScanResultStatus,
   QrScanSource,
   Session,
@@ -35,8 +36,10 @@ type ScanMessage =
   | null
 
 export function ScannerPage() {
+  const { sessionId: routeSessionId } = useParams()
   const [searchParams] = useSearchParams()
-  const requestedSessionId = searchParams.get('session')
+  const requestedSessionId = routeSessionId ?? searchParams.get('session')
+  const isSessionScannerRoute = Boolean(routeSessionId)
   const [activeSessions, setActiveSessions] = useState<Session[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [records, setRecords] = useState<AttendanceRecord[]>([])
@@ -46,12 +49,12 @@ export function ScannerPage() {
   const [selectedCameraId, setSelectedCameraId] = useState('')
   const [lastRawScan, setLastRawScan] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [isDetectingCameras, setIsDetectingCameras] = useState(false)
   const [isScanningFile, setIsScanningFile] = useState(false)
   const [isScannerRunning, setIsScannerRunning] = useState(false)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const processingRef = useRef(false)
   const lastScanRef = useRef({ value: '', scannedAt: 0 })
+  const autoStartSessionRef = useRef<string | null>(null)
 
   const selectedSession = useMemo(
     () => activeSessions.find((session) => session.id === selectedSessionId) ?? null,
@@ -76,7 +79,9 @@ export function ScannerPage() {
       setSelectedSessionId(
         sessions.some((session) => session.id === requestedSessionId)
           ? (requestedSessionId ?? '')
-          : (sessions[0]?.id ?? ''),
+          : routeSessionId
+            ? ''
+            : (sessions[0]?.id ?? ''),
       )
       setIsLoading(false)
     }
@@ -85,7 +90,7 @@ export function ScannerPage() {
     return () => {
       isMounted = false
     }
-  }, [requestedSessionId])
+  }, [requestedSessionId, routeSessionId])
 
   useEffect(() => {
     if (!selectedSessionId) return
@@ -102,7 +107,25 @@ export function ScannerPage() {
 
   const markScannedEnrollment = useCallback(
     async (rawQrValue: string, scanSource: QrScanSource = 'camera') => {
-      const persistScanLog = async ({
+      let scanLog: QrScanLog | null = null
+      const enrollmentNumber = parseEnrollmentFromQr(rawQrValue)
+
+      const persistInitialScanLog = async (sessionId: string | null) => {
+        try {
+          scanLog = await recordQrScanLog({
+            sessionId,
+            rawPayload: rawQrValue,
+            parsedEnrollmentNumber: enrollmentNumber,
+            resultStatus: 'received',
+            scanSource,
+            cameraLabel: scanSource === 'camera' ? selectedCameraLabel : null,
+          })
+        } catch {
+          scanLog = null
+        }
+      }
+
+      const finalizeScanLog = async ({
         sessionId,
         parsedEnrollmentNumber,
         resultStatus,
@@ -116,26 +139,37 @@ export function ScannerPage() {
         errorMessage?: string | null
       }) => {
         try {
-          await recordQrScanLog({
-            sessionId,
-            rawPayload: rawQrValue,
-            parsedEnrollmentNumber,
-            resultStatus,
-            attendanceRecordId,
-            scanSource,
-            cameraLabel: scanSource === 'camera' ? selectedCameraLabel : null,
-            errorMessage,
-          })
+          if (scanLog) {
+            await updateQrScanLog(scanLog.id, {
+              sessionId,
+              parsedEnrollmentNumber,
+              resultStatus,
+              attendanceRecordId,
+              cameraLabel: scanSource === 'camera' ? selectedCameraLabel : null,
+              errorMessage,
+            })
+          } else {
+            await recordQrScanLog({
+              sessionId,
+              rawPayload: rawQrValue,
+              parsedEnrollmentNumber,
+              resultStatus,
+              attendanceRecordId,
+              scanSource,
+              cameraLabel: scanSource === 'camera' ? selectedCameraLabel : null,
+              errorMessage,
+            })
+          }
           return null
         } catch (caught) {
           return caught instanceof Error ? caught.message : 'QR scan log was not stored.'
         }
       }
 
-      const enrollmentNumber = parseEnrollmentFromQr(rawQrValue)
+      await persistInitialScanLog(selectedSession?.id ?? null)
 
       if (!selectedSession) {
-        const logError = await persistScanLog({
+        const logError = await finalizeScanLog({
           sessionId: null,
           parsedEnrollmentNumber: enrollmentNumber,
           resultStatus: 'no_active_session',
@@ -152,7 +186,7 @@ export function ScannerPage() {
       }
 
       if (!enrollmentNumber) {
-        const logError = await persistScanLog({
+        const logError = await finalizeScanLog({
           sessionId: selectedSession.id,
           parsedEnrollmentNumber: null,
           resultStatus: 'unreadable',
@@ -168,18 +202,37 @@ export function ScannerPage() {
         return
       }
 
-      const result = await markAttendanceByEnrollment({
-        sessionId: selectedSession.id,
-        token: selectedSession.qr_secret,
-        enrollmentNumber,
-        method: 'qr_scan',
-      })
+      let result: AttendanceResult
 
-      const nextRecords = await getAttendanceForSession(selectedSession.id)
-      setRecords(nextRecords)
+      try {
+        result = await markAttendanceByEnrollment({
+          sessionId: selectedSession.id,
+          token: selectedSession.qr_secret,
+          enrollmentNumber,
+          method: 'qr_scan',
+        })
+      } catch (caught) {
+        const errorMessage =
+          caught instanceof Error ? caught.message : 'Attendance could not be saved.'
+        const logError = await finalizeScanLog({
+          sessionId: selectedSession.id,
+          parsedEnrollmentNumber: enrollmentNumber,
+          resultStatus: 'error',
+          errorMessage,
+        })
+        setMessage({
+          tone: 'danger',
+          title: 'Scan storage failed',
+          detail: logError
+            ? `${errorMessage} Scan log failed: ${logError}`
+            : `${errorMessage} Raw QR stored for audit.`,
+        })
+        return
+      }
+
       const attendanceRecordId = 'record' in result ? (result.record?.id ?? null) : null
       const resultMessage = 'message' in result ? result.message : null
-      const logError = await persistScanLog({
+      const logError = await finalizeScanLog({
         sessionId: selectedSession.id,
         parsedEnrollmentNumber: enrollmentNumber,
         resultStatus: result.status,
@@ -193,11 +246,15 @@ export function ScannerPage() {
         ? ` Scan log failed: ${logError}`
         : ' Raw QR stored.'
 
+      void getAttendanceForSession(selectedSession.id)
+        .then(setRecords)
+        .catch(() => undefined)
+
       if (result.status === 'success') {
         setMessage({
           tone: 'success',
           title: 'Saved to current class',
-          detail: `${result.student.enrollment_number} / ${result.student.full_name}.${logSuffix}`,
+          detail: `${result.student.enrollment_number} / ${result.student.full_name ?? 'Name not added'}.${logSuffix}`,
           result,
         })
         return
@@ -207,7 +264,7 @@ export function ScannerPage() {
         setMessage({
           tone: 'warning',
           title: 'Already marked',
-          detail: `${result.student.enrollment_number} / ${result.student.full_name}.${logSuffix}`,
+          detail: `${result.student.enrollment_number} / ${result.student.full_name ?? 'Name not added'}.${logSuffix}`,
           result,
         })
         return
@@ -245,43 +302,7 @@ export function ScannerPage() {
     [markScannedEnrollment],
   )
 
-  async function detectCameras() {
-    setIsDetectingCameras(true)
-
-    try {
-      const cameras = await Html5Qrcode.getCameras()
-      setCameraDevices(cameras)
-
-      if (!selectedCameraId) {
-        const preferred =
-          cameras.find((camera) => /back|rear|environment/i.test(camera.label)) ??
-          cameras[0]
-        setSelectedCameraId(preferred?.id ?? '')
-      }
-
-      setMessage({
-        tone: cameras.length > 0 ? 'success' : 'warning',
-        title: cameras.length > 0 ? 'Cameras detected' : 'No camera found',
-        detail:
-          cameras.length > 0
-            ? `${cameras.length} camera${cameras.length === 1 ? '' : 's'} available.`
-            : 'Connect a camera or use image upload fallback.',
-      })
-    } catch (caught) {
-      setMessage({
-        tone: 'danger',
-        title: 'Camera detection failed',
-        detail:
-          caught instanceof Error
-            ? caught.message
-            : 'Browser did not return camera devices.',
-      })
-    } finally {
-      setIsDetectingCameras(false)
-    }
-  }
-
-  async function startScanner() {
+  const startScanner = useCallback(async () => {
     if (scannerRef.current || isScannerRunning) return
 
     let scanner: Html5Qrcode | null = null
@@ -334,7 +355,15 @@ export function ScannerPage() {
         detail: caught instanceof Error ? caught.message : 'Could not start scanner.',
       })
     }
-  }
+  }, [cameraDevices, handleDecodedQr, isScannerRunning, selectedCameraId])
+
+  useEffect(() => {
+    if (!isSessionScannerRoute || !selectedSession || isScannerRunning) return
+    if (autoStartSessionRef.current === selectedSession.id) return
+
+    autoStartSessionRef.current = selectedSession.id
+    void startScanner()
+  }, [isScannerRunning, isSessionScannerRoute, selectedSession, startScanner])
 
   async function stopScanner() {
     const scanner = scannerRef.current
@@ -435,14 +464,6 @@ export function ScannerPage() {
               </SelectField>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button
-                disabled={isScannerRunning || isDetectingCameras}
-                onClick={() => void detectCameras()}
-                variant="secondary"
-              >
-                <RefreshCw size={18} aria-hidden="true" />
-                {isDetectingCameras ? 'Detecting' : 'Detect Cameras'}
-              </Button>
               <Button disabled={!selectedSession || isScannerRunning} onClick={() => void startScanner()}>
                 <Camera size={20} aria-hidden="true" />
                 Start Scanner
@@ -499,7 +520,7 @@ export function ScannerPage() {
               label="Manual enrollment fallback"
               name="manualEnrollment"
               onChange={(event) => setManualEnrollment(event.target.value)}
-              placeholder="2023CSE001"
+              placeholder="Enrollment number"
               value={manualEnrollment}
             />
             <Button disabled={!selectedSession || manualEnrollment.trim().length < 2} variant="inverse" type="submit">
@@ -559,7 +580,7 @@ export function ScannerPage() {
                   <UserCheck size={18} aria-hidden="true" />
                   <span className="font-bold">{record.students?.enrollment_number}</span>
                 </div>
-                <p className="mt-1">{record.students?.full_name}</p>
+                <p className="mt-1">{record.students?.full_name ?? 'Name not added'}</p>
                 <p className="mt-1 text-xs text-muted">
                   {new Date(record.marked_at).toLocaleTimeString()} / {record.method}
                 </p>

@@ -1,25 +1,24 @@
-import { demoAttendanceRecords } from '../data/demoData'
 import { isExpired } from '../lib/dates'
 import { getSupabaseClient, supabase } from '../lib/supabase'
 import { getSessionById } from './sessionService'
-import { getStudentByEnrollment } from './studentService'
+import { ensureStudentByEnrollment } from './studentService'
 import type { AttendanceRecord, AttendanceResult, Student } from '../types/database'
 
-const storageKey = 'qr-attendance-demo-records'
+const storageKey = 'qr-attendance-records'
 
-function readDemoAttendance() {
-  if (typeof window === 'undefined') return demoAttendanceRecords
+function readLocalAttendance() {
+  if (typeof window === 'undefined') return []
   const stored = window.localStorage.getItem(storageKey)
-  if (!stored) return demoAttendanceRecords
+  if (!stored) return []
   return JSON.parse(stored) as AttendanceRecord[]
 }
 
-function writeDemoAttendance(records: AttendanceRecord[]) {
+function writeLocalAttendance(records: AttendanceRecord[]) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(storageKey, JSON.stringify(records))
 }
 
-function makeDemoRecord(sessionId: string, student: Student, method: AttendanceRecord['method']) {
+function makeLocalRecord(sessionId: string, student: Student, method: AttendanceRecord['method']) {
   return {
     id: `attendance-${sessionId}-${student.id}`,
     student_id: student.id,
@@ -28,7 +27,7 @@ function makeDemoRecord(sessionId: string, student: Student, method: AttendanceR
     method,
     marked_by: method === 'qr_scan' ? 'system' : 'faculty',
     ip_address: null,
-    device_info: navigator.userAgent,
+    device_info: typeof navigator === 'undefined' ? null : navigator.userAgent,
     status: 'present',
     notes: null,
     students: student,
@@ -39,7 +38,7 @@ export async function getAttendanceForSession(
   sessionId: string,
 ): Promise<AttendanceRecord[]> {
   if (!supabase) {
-    return readDemoAttendance().filter((record) => record.session_id === sessionId)
+    return readLocalAttendance().filter((record) => record.session_id === sessionId)
   }
 
   const { data, error } = await supabase
@@ -77,13 +76,10 @@ export async function markAttendanceByEnrollment({
     return { status: 'expired', message: 'This class session has expired.' }
   }
 
-  const student = await getStudentByEnrollment(enrollmentNumber)
-  if (!student) {
-    return { status: 'student_not_found', message: 'Enrollment number not found.' }
-  }
+  const student = await ensureStudentByEnrollment(enrollmentNumber)
 
   if (!supabase) {
-    const records = readDemoAttendance()
+    const records = readLocalAttendance()
     const duplicate = records.find(
       (record) => record.session_id === sessionId && record.student_id === student.id,
     )
@@ -98,8 +94,8 @@ export async function markAttendanceByEnrollment({
       }
     }
 
-    const record = makeDemoRecord(sessionId, student, method)
-    writeDemoAttendance([record, ...records])
+    const record = makeLocalRecord(sessionId, student, method)
+    writeLocalAttendance([record, ...records])
     return { status: 'success', record, student, session }
   }
 
@@ -110,16 +106,24 @@ export async function markAttendanceByEnrollment({
       session_id: session.id,
       method,
       status: 'present',
-      device_info: navigator.userAgent,
+      device_info: typeof navigator === 'undefined' ? null : navigator.userAgent,
       marked_by: method === 'qr_scan' ? 'system' : 'faculty',
     })
     .select('*, students (*, departments (*))')
     .single()
 
   if (error?.code === '23505') {
+    const { data: existingRecord } = await supabase
+      .from('attendance_records')
+      .select('*, students (*, departments (*))')
+      .eq('student_id', student.id)
+      .eq('session_id', session.id)
+      .maybeSingle()
+
     return {
       status: 'duplicate',
       message: 'Attendance already recorded.',
+      record: (existingRecord as AttendanceRecord | null) ?? undefined,
       student,
       session,
     }

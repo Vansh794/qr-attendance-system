@@ -59,6 +59,7 @@ function App() {
           <Route path="/scanner" element={<Navigate replace to="/" />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/sessions/new" element={<NewSessionPage />} />
+          <Route path="/sessions/:sessionId/scanner" element={<ScannerPage />} />
           <Route path="/sessions/:sessionId" element={<SessionPage />} />
           <Route
             path="/sessions/:sessionId/attendance"

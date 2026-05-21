@@ -101,7 +101,7 @@ export function AttendPage() {
       {result && 'student' in result ? (
         <div className="mt-8 border-y-4 border-ink py-6 text-center">
           <p className="font-mono text-xl font-bold uppercase">
-            {result.student.full_name}
+            {result.student.full_name ?? 'Name not added'}
           </p>
           <p className="mt-2 font-mono text-muted">{result.student.enrollment_number}</p>
           {'record' in result && result.record ? (
@@ -122,7 +122,7 @@ export function AttendPage() {
             autoComplete="off"
             label="Enrollment number"
             name="enrollment"
-            placeholder="2023CSE001"
+            placeholder="Enrollment number"
             required
           />
           <Button className="w-full" disabled={!sessionId || !token || isSubmitting} type="submit">

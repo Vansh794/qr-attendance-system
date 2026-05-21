@@ -3,6 +3,7 @@ export type AttendanceStatus = 'present' | 'late' | 'absent'
 export type AdminRole = 'super_admin' | 'admin' | 'faculty'
 export type QrScanSource = 'camera' | 'image_upload' | 'manual_entry'
 export type QrScanResultStatus =
+  | 'received'
   | AttendanceResult['status']
   | 'no_active_session'
   | 'unreadable'
@@ -27,7 +28,7 @@ export type Course = {
 export type Student = {
   id: string
   enrollment_number: string
-  full_name: string
+  full_name: string | null
   email: string | null
   phone: string | null
   department_id: string | null

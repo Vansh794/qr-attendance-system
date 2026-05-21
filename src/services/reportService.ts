@@ -1,9 +1,9 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Papa from 'papaparse'
-import { demoStudents } from '../data/demoData'
 import { getAttendanceForSession } from './attendanceService'
 import { getSessionById, listSessions } from './sessionService'
+import { listStudents } from './studentService'
 import type { AttendanceExportRow } from '../types/database'
 
 export type SessionReport = {
@@ -29,7 +29,10 @@ export async function getSessionReport(sessionId: string): Promise<SessionReport
   const session = await getSessionById(sessionId)
   if (!session) throw new Error('Session not found')
 
-  const records = await getAttendanceForSession(sessionId)
+  const [records, students] = await Promise.all([
+    getAttendanceForSession(sessionId),
+    listStudents(),
+  ])
   const rows = records.map((record) => ({
     enrollmentNumber: record.students?.enrollment_number ?? '',
     studentName: record.students?.full_name ?? '',
@@ -47,21 +50,22 @@ export async function getSessionReport(sessionId: string): Promise<SessionReport
     title: `${session.courses?.code ?? 'SESSION'} ${session.session_date}`,
     courseCode: session.courses?.code ?? '',
     courseName: session.courses?.name ?? '',
-    totalStudents: demoStudents.length,
+    totalStudents: students.length,
     presentCount: rows.length,
-    absentCount: Math.max(demoStudents.length - rows.length, 0),
+    absentCount: Math.max(students.length - rows.length, 0),
     rows,
   }
 }
 
 export async function listDefaulters(threshold = 75): Promise<DefaulterRow[]> {
   const sessions = await listSessions()
-  const attendanceBySession = await Promise.all(
-    sessions.map((session) => getAttendanceForSession(session.id)),
-  )
+  const [students, attendanceBySession] = await Promise.all([
+    listStudents(),
+    Promise.all(sessions.map((session) => getAttendanceForSession(session.id))),
+  ])
   const total = Math.max(sessions.length, 1)
 
-  return demoStudents
+  return students
     .map((student) => {
       const attended = attendanceBySession.filter((records) =>
         records.some((record) => record.student_id === student.id),
@@ -70,7 +74,7 @@ export async function listDefaulters(threshold = 75): Promise<DefaulterRow[]> {
 
       return {
         enrollmentNumber: student.enrollment_number,
-        studentName: student.full_name,
+        studentName: student.full_name ?? '',
         attended,
         total,
         percentage,

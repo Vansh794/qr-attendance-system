@@ -1,10 +1,10 @@
-import { demoCourses, demoSessions } from '../data/demoData'
 import { getSupabaseClient, supabase } from '../lib/supabase'
 import { isExpired } from '../lib/dates'
 import { makeSecret } from '../lib/qr'
 import type { Course, Session, SessionCreateInput } from '../types/database'
 
-const demoSessionStorageKey = 'qr-attendance-demo-sessions'
+const coursesStorageKey = 'qr-attendance-courses'
+const sessionsStorageKey = 'qr-attendance-sessions'
 
 const sessionSelect = `
   *,
@@ -14,20 +14,27 @@ const sessionSelect = `
   )
 `
 
-function readDemoSessions() {
-  if (typeof window === 'undefined') return demoSessions
-  const stored = window.localStorage.getItem(demoSessionStorageKey)
-  if (!stored) return demoSessions
+function readLocalCourses() {
+  if (typeof window === 'undefined') return []
+  const stored = window.localStorage.getItem(coursesStorageKey)
+  if (!stored) return []
+  return JSON.parse(stored) as Course[]
+}
+
+function readLocalSessions() {
+  if (typeof window === 'undefined') return []
+  const stored = window.localStorage.getItem(sessionsStorageKey)
+  if (!stored) return []
   return JSON.parse(stored) as Session[]
 }
 
-function writeDemoSessions(sessions: Session[]) {
+function writeLocalSessions(sessions: Session[]) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(demoSessionStorageKey, JSON.stringify(sessions))
+  window.localStorage.setItem(sessionsStorageKey, JSON.stringify(sessions))
 }
 
 export async function listCourses(): Promise<Course[]> {
-  if (!supabase) return demoCourses
+  if (!supabase) return readLocalCourses()
 
   const { data, error } = await supabase
     .from('courses')
@@ -39,7 +46,7 @@ export async function listCourses(): Promise<Course[]> {
 }
 
 export async function listSessions(): Promise<Session[]> {
-  if (!supabase) return readDemoSessions()
+  if (!supabase) return readLocalSessions()
 
   const { data, error } = await supabase
     .from('sessions')
@@ -58,7 +65,7 @@ export async function listActiveSessions(): Promise<Session[]> {
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
-  if (!supabase) return readDemoSessions().find((session) => session.id === id) ?? null
+  if (!supabase) return readLocalSessions().find((session) => session.id === id) ?? null
 
   const { data, error } = await supabase
     .from('sessions')
@@ -72,7 +79,7 @@ export async function getSessionById(id: string): Promise<Session | null> {
 
 export async function createSession(input: SessionCreateInput): Promise<Session> {
   if (!supabase) {
-    const course = demoCourses.find((item) => item.id === input.course_id) ?? demoCourses[0]
+    const course = readLocalCourses().find((item) => item.id === input.course_id) ?? null
     const session = {
       id: makeSecret(),
       course_id: input.course_id,
@@ -87,7 +94,7 @@ export async function createSession(input: SessionCreateInput): Promise<Session>
       created_at: new Date().toISOString(),
       courses: course,
     } satisfies Session
-    writeDemoSessions([session, ...readDemoSessions()])
+    writeLocalSessions([session, ...readLocalSessions()])
     return session
   }
 
@@ -107,8 +114,8 @@ export async function createSession(input: SessionCreateInput): Promise<Session>
 
 export async function closeSession(id: string): Promise<void> {
   if (!supabase) {
-    writeDemoSessions(
-      readDemoSessions().map((session) =>
+    writeLocalSessions(
+      readLocalSessions().map((session) =>
         session.id === id
           ? { ...session, is_active: false, end_time: new Date().toTimeString().slice(0, 8) }
           : session,

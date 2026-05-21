@@ -131,7 +131,7 @@ export function SessionPage() {
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               className="focus-brutal inline-flex min-h-11 items-center justify-center gap-2 border-4 border-ink bg-accent px-5 py-3 font-mono font-bold uppercase text-white shadow-brutal"
-              to={`/?session=${session.id}`}
+              to={`/sessions/${session.id}/scanner`}
             >
               <ScanLine size={18} aria-hidden="true" />
               Open Scanner
@@ -158,7 +158,7 @@ export function SessionPage() {
             <li className="border-b border-dashed border-paper/30 pb-3" key={record.id}>
               {new Date(record.marked_at).toLocaleTimeString()} {'  '}
               {record.students?.enrollment_number} {'  '}
-              {record.students?.full_name.toUpperCase()}
+              {(record.students?.full_name ?? 'Name not added').toUpperCase()}
             </li>
           ))}
         </ol>

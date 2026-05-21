@@ -9,52 +9,90 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, StatBlock } from '../components/ui'
-import { demoAttendanceRecords, demoSessions } from '../data/demoData'
+import { getAttendanceForSession } from '../services/attendanceService'
 import { listSessions } from '../services/sessionService'
-import type { Session } from '../types/database'
+import { listStudents } from '../services/studentService'
+import type { AttendanceRecord, Session, Student } from '../types/database'
 
-const stats = [
-  { label: 'Today Sessions', value: '04', icon: Activity },
-  { label: 'Students Marked', value: '128', icon: ListChecks },
-  { label: 'Average Attendance', value: '82%', icon: ShieldCheck },
-  { label: 'Live Session', value: '01', icon: QrCode },
+const baseStats = [
+  { label: 'Today Sessions', icon: Activity },
+  { label: 'Students Marked', icon: ListChecks },
+  { label: 'Average Attendance', icon: ShieldCheck },
+  { label: 'Live Session', icon: QrCode },
 ]
 
 export function DashboardPage() {
-  const [sessions, setSessions] = useState<Session[]>(demoSessions)
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
-    listSessions().then((items) => {
-      if (isMounted) setSessions(items)
-    })
+
+    async function loadDashboard() {
+      try {
+        const [nextSessions, nextStudents] = await Promise.all([
+          listSessions(),
+          listStudents(),
+        ])
+        const nextAttendance = (
+          await Promise.all(
+            nextSessions.map((session) => getAttendanceForSession(session.id)),
+          )
+        ).flat()
+
+        if (!isMounted) return
+        setSessions(nextSessions)
+        setStudents(nextStudents)
+        setAttendanceRecords(nextAttendance)
+      } catch (caught) {
+        if (isMounted) {
+          setError(caught instanceof Error ? caught.message : 'Could not load dashboard.')
+        }
+      }
+    }
+
+    void loadDashboard()
 
     return () => {
       isMounted = false
     }
   }, [])
 
-  const dashboardStats = useMemo(
+  const dashboardStats = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const todaySessions = sessions.filter((session) => session.session_date === today)
+    const possibleMarks = sessions.length * students.length
+    const averageAttendance =
+      possibleMarks > 0 ? Math.round((attendanceRecords.length / possibleMarks) * 100) : 0
+
+    return baseStats.map((stat) => {
+      if (stat.label === 'Today Sessions') {
+        return { ...stat, value: String(todaySessions.length).padStart(2, '0') }
+      }
+      if (stat.label === 'Live Session') {
+        return {
+          ...stat,
+          value: String(sessions.filter((session) => session.is_active).length).padStart(2, '0'),
+        }
+      }
+      if (stat.label === 'Students Marked') {
+        return {
+          ...stat,
+          value: String(attendanceRecords.length).padStart(2, '0'),
+        }
+      }
+      return { ...stat, value: `${averageAttendance}%` }
+    })
+  }, [attendanceRecords.length, sessions, students.length])
+
+  const liveFeed = useMemo(
     () =>
-      stats.map((stat) => {
-        if (stat.label === 'Today Sessions') {
-          return { ...stat, value: String(sessions.length).padStart(2, '0') }
-        }
-        if (stat.label === 'Live Session') {
-          return {
-            ...stat,
-            value: String(sessions.filter((session) => session.is_active).length).padStart(2, '0'),
-          }
-        }
-        if (stat.label === 'Students Marked') {
-          return {
-            ...stat,
-            value: String(demoAttendanceRecords.length).padStart(2, '0'),
-          }
-        }
-        return stat
-      }),
-    [sessions],
+      [...attendanceRecords]
+        .sort((a, b) => b.marked_at.localeCompare(a.marked_at))
+        .slice(0, 10),
+    [attendanceRecords],
   )
 
   return (
@@ -67,6 +105,11 @@ export function DashboardPage() {
           <h1 className="mt-2 max-w-4xl font-mono text-4xl font-bold uppercase leading-none sm:text-5xl lg:text-6xl">
             Attendance Tracker
           </h1>
+          {error ? (
+            <p className="mt-4 border-3 border-danger bg-paper p-3 font-mono text-sm font-bold uppercase text-danger">
+              {error}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -122,17 +165,17 @@ export function DashboardPage() {
                     key={session.id}
                   >
                     <td className="px-4 py-4 font-mono font-bold">
-                      {session.courses?.code}
+                      {session.courses?.code ?? 'NO COURSE'}
                     </td>
                     <td className="px-4 py-4">
                       <Link
                         className="focus-brutal underline decoration-4 underline-offset-4"
                         to={`/sessions/${session.id}`}
                       >
-                        {session.courses?.name}
+                        {session.courses?.name ?? session.session_date}
                       </Link>
                     </td>
-                    <td className="px-4 py-4">{session.room}</td>
+                    <td className="px-4 py-4">{session.room ?? '-'}</td>
                     <td className="px-4 py-4 font-mono">{session.start_time}</td>
                     <td className="px-4 py-4">
                       <Badge tone={session.is_active ? 'live' : 'closed'}>
@@ -144,22 +187,32 @@ export function DashboardPage() {
               </tbody>
             </table>
           </div>
+          {sessions.length === 0 ? (
+            <p className="border-t-4 border-ink p-4 font-mono text-sm font-bold uppercase text-muted">
+              No sessions found. Create a class session to begin scanning ID cards.
+            </p>
+          ) : null}
         </article>
 
         <article className="border-4 border-ink bg-ink p-5 text-paper shadow-brutal">
           <div className="flex items-center justify-between gap-4 border-b-4 border-paper pb-4">
             <h2 className="font-mono text-xl font-bold uppercase">Live Feed</h2>
-            <Badge tone="present">Live</Badge>
+            <Badge tone={liveFeed.length > 0 ? 'present' : 'closed'}>Live</Badge>
           </div>
           <ol className="mt-5 grid gap-4 font-mono text-sm">
-            {demoAttendanceRecords.map((record) => (
+            {liveFeed.map((record) => (
               <li className="border-b border-dashed border-paper/30 pb-3" key={record.id}>
                 {new Date(record.marked_at).toLocaleTimeString()} {'  '}
-                {record.students?.enrollment_number} {'  '}
-                {record.students?.full_name.toUpperCase()}
+                {record.students?.enrollment_number ?? 'UNKNOWN'} {'  '}
+                {(record.students?.full_name ?? 'Name not added').toUpperCase()}
               </li>
             ))}
           </ol>
+          {liveFeed.length === 0 ? (
+            <p className="mt-5 font-mono text-sm font-bold uppercase text-paper/70">
+              No scans recorded yet.
+            </p>
+          ) : null}
         </article>
       </section>
     </>

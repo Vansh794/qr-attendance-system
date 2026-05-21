@@ -72,7 +72,7 @@ export function ManualAttendancePage() {
           label="Search by enrollment number"
           name="enrollment"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="2023CSE001"
+          placeholder="Enrollment number"
           value={query}
         />
         <Button disabled={isSearching || query.trim().length < 2} variant="inverse" type="submit">
@@ -89,7 +89,7 @@ export function ManualAttendancePage() {
                 {result.status}
               </Badge>
               <p className="mt-3">
-                {result.student.enrollment_number} / {result.student.full_name}
+                {result.student.enrollment_number} / {result.student.full_name ?? 'Name not added'}
               </p>
             </>
           ) : (
@@ -112,7 +112,7 @@ export function ManualAttendancePage() {
             {students.map((student, index) => (
               <tr className={index % 2 === 0 ? 'bg-surface' : 'bg-stripe'} key={student.id}>
                 <td className="px-4 py-4 font-mono font-bold">{student.enrollment_number}</td>
-                <td className="px-4 py-4">{student.full_name}</td>
+                <td className="px-4 py-4">{student.full_name ?? 'Name not added'}</td>
                 <td className="px-4 py-4 font-mono">{student.semester}</td>
                 <td className="px-4 py-4">
                   <Button

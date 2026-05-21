@@ -1,6 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { env, isSupabaseConfigured } from './env'
 
+if (import.meta.env.PROD && !isSupabaseConfigured) {
+  throw new Error('Supabase is required in production. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
+}
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(env.supabaseUrl!, env.supabaseAnonKey!)
   : null
