@@ -4,19 +4,19 @@ import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 
 describe('App', () => {
-  it('renders the faculty dashboard shell', async () => {
+  it('renders the scanner-first landing page', async () => {
     render(
-      <MemoryRouter initialEntries={['/dashboard']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     )
 
     expect(
-      await screen.findByRole('heading', { name: /attendance tracker/i }, { timeout: 5000 }),
+      await screen.findByRole('heading', { name: /id card qr scanner/i }, { timeout: 5000 }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /new session/i }),
+      screen.getByRole('button', { name: /start scanner/i }),
     ).toBeInTheDocument()
-    expect(screen.getByText('CSE301')).toBeInTheDocument()
+    expect(screen.getByText(/scanned students/i)).toBeInTheDocument()
   })
 })

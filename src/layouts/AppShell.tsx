@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BookOpen, ChartNoAxesColumn, LayoutDashboard, Users } from 'lucide-react'
+import { BookOpen, ChartNoAxesColumn, LayoutDashboard, ScanLine, Users } from 'lucide-react'
 
 const navItems = [
+  { label: 'Scanner', href: '/', icon: ScanLine, end: true },
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Sessions', href: '/sessions/new', icon: BookOpen },
   { label: 'Students', href: '/admin/students', icon: Users },
@@ -14,7 +15,7 @@ export function AppShell() {
       <aside className="border-b-4 border-ink bg-ink p-6 text-paper lg:border-b-0 lg:border-r-4">
         <NavLink
           className="focus-brutal inline-block font-mono text-3xl font-bold uppercase leading-none"
-          to="/dashboard"
+          to="/"
         >
           QR
           <br />
@@ -24,7 +25,7 @@ export function AppShell() {
           aria-label="Primary"
           className="mt-10 grid gap-3 font-mono text-sm font-bold uppercase"
         >
-          {navItems.map(({ label, href, icon: Icon }) => (
+          {navItems.map(({ label, href, icon: Icon, end }) => (
             <NavLink
               className={({ isActive }) =>
                 [
@@ -34,6 +35,7 @@ export function AppShell() {
                     : 'border-transparent hover:border-accent hover:bg-accent/20',
                 ].join(' ')
               }
+              end={end}
               key={href}
               to={href}
             >

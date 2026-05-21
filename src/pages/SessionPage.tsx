@@ -1,16 +1,13 @@
-import QRCode from 'react-qr-code'
 import { Link, useParams } from 'react-router-dom'
-import { RotateCw, Square, UserPlus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ScanLine, Square, UserPlus } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, Panel } from '../components/ui'
 import { getAttendanceForSession, subscribeToAttendance } from '../services/attendanceService'
 import {
   closeSession,
   getSessionById,
   getSessionState,
-  refreshSessionSecret,
 } from '../services/sessionService'
-import { buildAttendUrl } from '../lib/qr'
 import type { AttendanceRecord, Session } from '../types/database'
 
 const statusTone = {
@@ -65,19 +62,12 @@ export function SessionPage() {
     }
   }, [sessionId])
 
-  const attendUrl = useMemo(() => (session ? buildAttendUrl(session) : ''), [session])
   const state = session ? getSessionState(session) : 'closed'
 
   async function handleCloseSession() {
     if (!session) return
     await closeSession(session.id)
     setSession({ ...session, is_active: false, end_time: new Date().toTimeString().slice(0, 8) })
-  }
-
-  async function handleRefreshQr() {
-    if (!session) return
-    const updated = await refreshSessionSecret(session.id)
-    setSession(updated)
   }
 
   if (isLoading) {
@@ -121,32 +111,31 @@ export function SessionPage() {
 
         <div
           className={[
-            'mx-auto mt-8 max-w-[480px] border-6 bg-surface p-6 shadow-brutal',
+            'mx-auto mt-8 max-w-[560px] border-6 bg-surface p-6 shadow-brutal',
             state === 'live' ? 'border-accent' : 'border-danger',
           ].join(' ')}
         >
-          <p className="mb-5 text-center font-mono text-sm font-bold uppercase text-muted">
-            Scan to mark attendance
-          </p>
-          <div className="mx-auto aspect-square w-full max-w-[400px] bg-white p-3">
-            <QRCode
-              bgColor="#FFFFFF"
-              fgColor="#0A0A0A"
-              size={400}
-              style={{ height: '100%', width: '100%' }}
-              value={attendUrl}
-              viewBox="0 0 400 400"
-            />
+          <div className="grid gap-5 text-center">
+            <ScanLine className="mx-auto text-accent" size={88} aria-hidden="true" />
+            <h2 className="font-mono text-3xl font-bold uppercase leading-none">
+              Scan Student ID Cards
+            </h2>
+            <p className="font-mono text-sm font-bold uppercase text-muted">
+              Records save against this class
+            </p>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t-4 border-ink pt-4 font-mono font-bold uppercase">
             <span>[ {records.length} ] Present</span>
             <span>{session.qr_expires_at ? new Date(session.qr_expires_at).toLocaleTimeString() : 'No expiry'}</span>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button onClick={handleRefreshQr} variant="secondary">
-              <RotateCw size={18} aria-hidden="true" />
-              Refresh QR
-            </Button>
+            <Link
+              className="focus-brutal inline-flex min-h-11 items-center justify-center gap-2 border-4 border-ink bg-accent px-5 py-3 font-mono font-bold uppercase text-white shadow-brutal"
+              to={`/?session=${session.id}`}
+            >
+              <ScanLine size={18} aria-hidden="true" />
+              Open Scanner
+            </Link>
             <Link
               className="focus-brutal inline-flex min-h-11 items-center justify-center gap-2 border-3 border-ink bg-surface px-5 py-3 font-mono font-bold uppercase shadow-brutal-sm"
               to="attendance"

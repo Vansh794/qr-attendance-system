@@ -4,7 +4,6 @@ import {
   ListChecks,
   Plus,
   QrCode,
-  Search,
   ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -72,15 +71,18 @@ export function DashboardPage() {
         <div className="flex flex-wrap gap-3">
           <Link
             className="focus-brutal inline-flex min-h-11 items-center justify-center gap-2 border-4 border-ink bg-accent px-5 py-3 font-mono font-bold uppercase text-white shadow-brutal transition hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+            to="/"
+          >
+            <QrCode size={20} aria-hidden="true" />
+            Open Scanner
+          </Link>
+          <Link
+            className="focus-brutal inline-flex min-h-11 items-center justify-center gap-2 border-3 border-ink bg-surface px-5 py-3 font-mono font-bold uppercase shadow-brutal-sm transition active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
             to="/sessions/new"
           >
             <Plus size={20} aria-hidden="true" />
             New Session
           </Link>
-          <Button variant="secondary">
-            <Search size={20} aria-hidden="true" />
-            Manual Mark
-          </Button>
         </div>
       </header>
 

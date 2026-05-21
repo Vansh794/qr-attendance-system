@@ -10,7 +10,7 @@ import type { AttendanceResult, Session } from '../types/database'
 const stateCopy = {
   success: 'Attendance recorded',
   duplicate: 'Already recorded',
-  expired: 'QR code expired',
+  expired: 'Class expired',
   closed: 'Session closed',
   invalid_session: 'Invalid session',
   student_not_found: 'Enrollment not found',

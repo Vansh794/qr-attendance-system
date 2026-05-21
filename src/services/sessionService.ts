@@ -50,6 +50,13 @@ export async function listSessions(): Promise<Session[]> {
   return (data ?? []) as Session[]
 }
 
+export async function listActiveSessions(): Promise<Session[]> {
+  const sessions = await listSessions()
+  return sessions
+    .filter((session) => getSessionState(session) === 'live')
+    .sort((a, b) => `${b.session_date}T${b.start_time}`.localeCompare(`${a.session_date}T${a.start_time}`))
+}
+
 export async function getSessionById(id: string): Promise<Session | null> {
   if (!supabase) return readDemoSessions().find((session) => session.id === id) ?? null
 
@@ -116,30 +123,6 @@ export async function closeSession(id: string): Promise<void> {
     .eq('id', id)
 
   if (error) throw error
-}
-
-export async function refreshSessionSecret(id: string): Promise<Session> {
-  const qrSecret = makeSecret()
-
-  if (!supabase) {
-    const session = await getSessionById(id)
-    if (!session) throw new Error('Session not found')
-    const updated = { ...session, qr_secret: qrSecret }
-    writeDemoSessions(
-      readDemoSessions().map((item) => (item.id === id ? updated : item)),
-    )
-    return updated
-  }
-
-  const { data, error } = await supabase
-    .from('sessions')
-    .update({ qr_secret: qrSecret })
-    .eq('id', id)
-    .select(sessionSelect)
-    .single()
-
-  if (error) throw error
-  return data as Session
 }
 
 export function getSessionState(session: Session) {

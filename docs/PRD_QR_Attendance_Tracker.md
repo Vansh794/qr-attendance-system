@@ -5,6 +5,8 @@
 **Status:** Draft  
 **Project ID (Supabase):** `qwaamzrkgesiqxghisuq` (Region: ap-south-1)
 
+> **Correction applied after review:** The primary v1 workflow is faculty/admin scanning QR codes printed on student ID cards. The QR payload contains the enrollment number, and each scan is saved against the active class/session. Session QR generation is not the core workflow. See `Product_Correction_ID_Card_QR_Scanning.md`.
+
 ---
 
 ## 1. Executive Summary

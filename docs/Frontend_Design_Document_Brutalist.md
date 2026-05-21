@@ -4,6 +4,8 @@
 **Date:** May 2026  
 **Design Direction:** RAW BRUTALISM — No decoration. Unapologetic structure. Typography as architecture.
 
+> **Correction applied after review:** The first screen is the faculty/admin student ID-card QR scanner. The generated session-QR page concepts below are historical and superseded by `Product_Correction_ID_Card_QR_Scanning.md`.
+
 ---
 
 ## 1. Design Philosophy

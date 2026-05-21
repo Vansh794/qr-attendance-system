@@ -66,7 +66,7 @@ export async function markAttendanceByEnrollment({
   const session = await getSessionById(sessionId)
 
   if (!session || session.qr_secret !== token) {
-    return { status: 'invalid_session', message: 'Invalid session QR.' }
+    return { status: 'invalid_session', message: 'Invalid class session.' }
   }
 
   if (!session.is_active) {
@@ -74,7 +74,7 @@ export async function markAttendanceByEnrollment({
   }
 
   if (isExpired(session.qr_expires_at)) {
-    return { status: 'expired', message: 'This QR code has expired.' }
+    return { status: 'expired', message: 'This class session has expired.' }
   }
 
   const student = await getStudentByEnrollment(enrollmentNumber)

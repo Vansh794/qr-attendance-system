@@ -30,6 +30,9 @@ const NewSessionPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })),
 )
+const ScannerPage = lazy(() =>
+  import('./pages/ScannerPage').then((module) => ({ default: module.ScannerPage })),
+)
 const SessionPage = lazy(() =>
   import('./pages/SessionPage').then((module) => ({ default: module.SessionPage })),
 )
@@ -52,7 +55,8 @@ function App() {
         </Route>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AppShell />}>
-          <Route index element={<Navigate replace to="/dashboard" />} />
+          <Route index element={<ScannerPage />} />
+          <Route path="/scanner" element={<Navigate replace to="/" />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/sessions/new" element={<NewSessionPage />} />
           <Route path="/sessions/:sessionId" element={<SessionPage />} />

@@ -6,6 +6,8 @@
 **Supabase Project URL:** `https://qwaamzrkgesiqxghisuq.supabase.co`  
 **Region:** ap-south-1 (Mumbai)
 
+> **Correction applied after review:** The app is scanner-first. Faculty/admin users scan student ID-card QR codes, parse the enrollment number, and save the attendance record against the live class/session. The session QR-generation sections are superseded by `Product_Correction_ID_Card_QR_Scanning.md`.
+
 ---
 
 ## 1. Technology Stack
