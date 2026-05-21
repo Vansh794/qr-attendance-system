@@ -83,6 +83,8 @@ a {
 #student-id-card-qr-scanner video {
   display: block;
   object-fit: cover;
+  transform: scaleX(-1);
+  transform-origin: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
