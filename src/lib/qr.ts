@@ -9,8 +9,8 @@ export function buildAttendUrl(session: Pick<Session, 'id' | 'qr_secret'>) {
 }
 
 export function makeSecret() {
-  if ('crypto' in window && 'randomUUID' in window.crypto) {
-    return window.crypto.randomUUID()
+  if (globalThis.crypto && 'randomUUID' in globalThis.crypto) {
+    return globalThis.crypto.randomUUID()
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`

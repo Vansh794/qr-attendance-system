@@ -7,9 +7,12 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, StatBlock } from '../components/ui'
 import { demoAttendanceRecords, demoSessions } from '../data/demoData'
+import { listSessions } from '../services/sessionService'
+import type { Session } from '../types/database'
 
 const stats = [
   { label: 'Today Sessions', value: '04', icon: Activity },
@@ -19,6 +22,42 @@ const stats = [
 ]
 
 export function DashboardPage() {
+  const [sessions, setSessions] = useState<Session[]>(demoSessions)
+
+  useEffect(() => {
+    let isMounted = true
+    listSessions().then((items) => {
+      if (isMounted) setSessions(items)
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const dashboardStats = useMemo(
+    () =>
+      stats.map((stat) => {
+        if (stat.label === 'Today Sessions') {
+          return { ...stat, value: String(sessions.length).padStart(2, '0') }
+        }
+        if (stat.label === 'Live Session') {
+          return {
+            ...stat,
+            value: String(sessions.filter((session) => session.is_active).length).padStart(2, '0'),
+          }
+        }
+        if (stat.label === 'Students Marked') {
+          return {
+            ...stat,
+            value: String(demoAttendanceRecords.length).padStart(2, '0'),
+          }
+        }
+        return stat
+      }),
+    [sessions],
+  )
+
   return (
     <>
       <header className="flex flex-col gap-6 border-b-4 border-ink pb-8 xl:flex-row xl:items-end xl:justify-between">
@@ -49,7 +88,7 @@ export function DashboardPage() {
         className="grid gap-5 py-8 md:grid-cols-2 xl:grid-cols-4"
         aria-label="Today at a glance"
       >
-        {stats.map((stat) => (
+        {dashboardStats.map((stat) => (
           <StatBlock key={stat.label} {...stat} />
         ))}
       </section>
@@ -75,7 +114,7 @@ export function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {demoSessions.map((session, index) => (
+                {sessions.map((session, index) => (
                   <tr
                     className={index % 2 === 0 ? 'bg-surface' : 'bg-stripe'}
                     key={session.id}
