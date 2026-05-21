@@ -12,9 +12,16 @@ import {
   getAttendanceForSession,
   markAttendanceByEnrollment,
 } from '../services/attendanceService'
+import { recordQrScanLog } from '../services/scanLogService'
 import { listActiveSessions } from '../services/sessionService'
 import { parseEnrollmentFromQr } from '../lib/studentQr'
-import type { AttendanceRecord, AttendanceResult, Session } from '../types/database'
+import type {
+  AttendanceRecord,
+  AttendanceResult,
+  QrScanResultStatus,
+  QrScanSource,
+  Session,
+} from '../types/database'
 
 const scannerElementId = 'student-id-card-qr-scanner'
 
@@ -49,6 +56,12 @@ export function ScannerPage() {
   const selectedSession = useMemo(
     () => activeSessions.find((session) => session.id === selectedSessionId) ?? null,
     [activeSessions, selectedSessionId],
+  )
+  const selectedCameraLabel = useMemo(
+    () =>
+      cameraDevices.find((camera) => camera.id === selectedCameraId)?.label ??
+      null,
+    [cameraDevices, selectedCameraId],
   )
 
   useEffect(() => {
@@ -88,22 +101,69 @@ export function ScannerPage() {
   }, [selectedSessionId])
 
   const markScannedEnrollment = useCallback(
-    async (rawQrValue: string) => {
+    async (rawQrValue: string, scanSource: QrScanSource = 'camera') => {
+      const persistScanLog = async ({
+        sessionId,
+        parsedEnrollmentNumber,
+        resultStatus,
+        attendanceRecordId,
+        errorMessage,
+      }: {
+        sessionId: string | null
+        parsedEnrollmentNumber: string | null
+        resultStatus: QrScanResultStatus
+        attendanceRecordId?: string | null
+        errorMessage?: string | null
+      }) => {
+        try {
+          await recordQrScanLog({
+            sessionId,
+            rawPayload: rawQrValue,
+            parsedEnrollmentNumber,
+            resultStatus,
+            attendanceRecordId,
+            scanSource,
+            cameraLabel: scanSource === 'camera' ? selectedCameraLabel : null,
+            errorMessage,
+          })
+          return null
+        } catch (caught) {
+          return caught instanceof Error ? caught.message : 'QR scan log was not stored.'
+        }
+      }
+
+      const enrollmentNumber = parseEnrollmentFromQr(rawQrValue)
+
       if (!selectedSession) {
+        const logError = await persistScanLog({
+          sessionId: null,
+          parsedEnrollmentNumber: enrollmentNumber,
+          resultStatus: 'no_active_session',
+          errorMessage: 'No active class selected.',
+        })
         setMessage({
           tone: 'danger',
           title: 'No active class',
-          detail: 'Start or select a live class before scanning ID cards.',
+          detail: logError
+            ? `Start or select a live class before scanning ID cards. Scan log failed: ${logError}`
+            : 'Start or select a live class before scanning ID cards. Raw QR stored.',
         })
         return
       }
 
-      const enrollmentNumber = parseEnrollmentFromQr(rawQrValue)
       if (!enrollmentNumber) {
+        const logError = await persistScanLog({
+          sessionId: selectedSession.id,
+          parsedEnrollmentNumber: null,
+          resultStatus: 'unreadable',
+          errorMessage: 'QR payload did not contain an enrollment number.',
+        })
         setMessage({
           tone: 'danger',
           title: 'Unreadable ID QR',
-          detail: 'The QR payload did not contain an enrollment number.',
+          detail: logError
+            ? `The QR payload did not contain an enrollment number. Scan log failed: ${logError}`
+            : 'The QR payload did not contain an enrollment number. Raw QR stored.',
         })
         return
       }
@@ -117,12 +177,27 @@ export function ScannerPage() {
 
       const nextRecords = await getAttendanceForSession(selectedSession.id)
       setRecords(nextRecords)
+      const attendanceRecordId = 'record' in result ? (result.record?.id ?? null) : null
+      const resultMessage = 'message' in result ? result.message : null
+      const logError = await persistScanLog({
+        sessionId: selectedSession.id,
+        parsedEnrollmentNumber: enrollmentNumber,
+        resultStatus: result.status,
+        attendanceRecordId,
+        errorMessage:
+          result.status === 'success' || result.status === 'duplicate'
+            ? null
+            : resultMessage,
+      })
+      const logSuffix = logError
+        ? ` Scan log failed: ${logError}`
+        : ' Raw QR stored.'
 
       if (result.status === 'success') {
         setMessage({
           tone: 'success',
           title: 'Saved to current class',
-          detail: `${result.student.enrollment_number} / ${result.student.full_name}`,
+          detail: `${result.student.enrollment_number} / ${result.student.full_name}.${logSuffix}`,
           result,
         })
         return
@@ -132,7 +207,7 @@ export function ScannerPage() {
         setMessage({
           tone: 'warning',
           title: 'Already marked',
-          detail: `${result.student.enrollment_number} / ${result.student.full_name}`,
+          detail: `${result.student.enrollment_number} / ${result.student.full_name}.${logSuffix}`,
           result,
         })
         return
@@ -141,11 +216,11 @@ export function ScannerPage() {
       setMessage({
         tone: 'danger',
         title: 'Scan rejected',
-        detail: result.message,
+        detail: `${result.message}${logSuffix}`,
         result,
       })
     },
-    [selectedSession],
+    [selectedCameraLabel, selectedSession],
   )
 
   const handleDecodedQr = useCallback(
@@ -161,7 +236,7 @@ export function ScannerPage() {
       lastScanRef.current = { value: decodedText, scannedAt: now }
       setLastRawScan(decodedText)
 
-      void markScannedEnrollment(decodedText).finally(() => {
+      void markScannedEnrollment(decodedText, 'camera').finally(() => {
         window.setTimeout(() => {
           processingRef.current = false
         }, 900)
@@ -292,7 +367,7 @@ export function ScannerPage() {
       scannerRef.current = scanner
       const decodedText = await scanner.scanFile(file, true)
       setLastRawScan(decodedText)
-      await markScannedEnrollment(decodedText)
+      await markScannedEnrollment(decodedText, 'image_upload')
       scanner.clear()
       scannerRef.current = null
     } catch (caught) {
@@ -313,7 +388,7 @@ export function ScannerPage() {
 
   async function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await markScannedEnrollment(manualEnrollment)
+    await markScannedEnrollment(manualEnrollment, 'manual_entry')
     setManualEnrollment('')
   }
 

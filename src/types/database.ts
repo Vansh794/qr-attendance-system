@@ -1,6 +1,11 @@
 export type AttendanceMethod = 'qr_scan' | 'manual_enrollment' | 'manual_name'
 export type AttendanceStatus = 'present' | 'late' | 'absent'
 export type AdminRole = 'super_admin' | 'admin' | 'faculty'
+export type QrScanSource = 'camera' | 'image_upload' | 'manual_entry'
+export type QrScanResultStatus =
+  | AttendanceResult['status']
+  | 'no_active_session'
+  | 'unreadable'
 
 export type Department = {
   id: string
@@ -62,6 +67,20 @@ export type AttendanceRecord = {
   status: AttendanceStatus
   notes: string | null
   students?: Student | null
+}
+
+export type QrScanLog = {
+  id: string
+  session_id: string | null
+  raw_payload: string
+  parsed_enrollment_number: string | null
+  result_status: QrScanResultStatus
+  attendance_record_id: string | null
+  scan_source: QrScanSource
+  camera_label: string | null
+  device_info: string | null
+  error_message: string | null
+  created_at: string
 }
 
 export type AdminUser = {
