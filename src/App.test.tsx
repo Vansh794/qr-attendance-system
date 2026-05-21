@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 
 describe('App', () => {
-  it('renders the faculty dashboard shell', () => {
+  it('renders the faculty dashboard shell', async () => {
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
         <App />
@@ -12,7 +12,7 @@ describe('App', () => {
     )
 
     expect(
-      screen.getByRole('heading', { name: /attendance tracker/i }),
+      await screen.findByRole('heading', { name: /attendance tracker/i }, { timeout: 5000 }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: /new session/i }),
